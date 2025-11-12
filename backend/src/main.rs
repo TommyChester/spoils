@@ -162,7 +162,7 @@ async fn get_product(
         ecoscore_grade,
         ingredients_text,
         allergens,
-        full_response: product_data.clone().into(),
+        full_response: product_data.clone(),
     };
 
     let mut conn = match pool.get() {
