@@ -5,7 +5,7 @@ mod schema;
 use actix_web::{get, web, App, HttpResponse, HttpServer, Responder};
 use actix_cors::Cors;
 use diesel::prelude::*;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
 use crate::db::DbPool;
 use crate::models::{NewProduct, OpenFoodFactsResponse, Product};
@@ -51,9 +51,10 @@ async fn get_product(
     };
 
     // Try to find product in database
+    let barcode_clone = barcode.clone();
     let existing_product = web::block(move || {
         products::table
-            .filter(products::barcode.eq(&barcode))
+            .filter(products::barcode.eq(&barcode_clone))
             .first::<Product>(&mut conn)
             .optional()
     })
