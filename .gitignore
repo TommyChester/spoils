@@ -6,6 +6,9 @@ backend/Cargo.lock
 # Diesel
 backend/.env
 
+# Expo Environment
+mobile/.env
+
 # Node
 mobile/node_modules/
 mobile/.expo/

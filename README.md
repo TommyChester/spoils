@@ -123,14 +123,15 @@ diesel migration revert
 ## Deployment
 
 **Backend:**
-- Deploy to Heroku, Fly.io, or Railway
-- Set `DATABASE_URL` environment variable
-- Use Rust buildpack
+- Deployed to Heroku at: https://spoils-backend-82d4a06b8d67.herokuapp.com
+- PostgreSQL database: ✓ Configured
+- To redeploy: `git subtree push --prefix backend heroku main`
 
 **Mobile:**
 - Use Expo EAS Build for production builds
-- Configure `app.json` for your app details
-- Run `eas build` to create builds for iOS/Android
+- First time setup: `cd mobile && npx eas-cli login && npx eas-cli build:configure`
+- Create a build: `npx eas-cli build --platform ios` or `--platform android`
+- The app is configured to use the production API URL by default
 
 ## License
 
