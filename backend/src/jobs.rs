@@ -1,7 +1,6 @@
 use async_trait::async_trait;
 use fang::asynk::async_queue::AsyncQueueable;
-use fang::asynk::async_worker_pool::AsyncWorkerPool;
-use fang::{AsyncRunnable, Deserialize, FangError, Scheduled, Serialize, RetentionMode};
+use fang::{AsyncRunnable, Deserialize, FangError, Scheduled, Serialize};
 use serde_json::Value;
 
 /// Job to fetch and cache a product from OpenFoodFacts
@@ -14,7 +13,7 @@ pub struct FetchProductJob {
 #[typetag::serde]
 #[async_trait]
 impl AsyncRunnable for FetchProductJob {
-    async fn run(&self, _queue: &mut dyn AsyncQueueable) -> Result<(), FangError> {
+    async fn run(&self, _queue: &dyn AsyncQueueable) -> Result<(), FangError> {
         log::info!("Processing FetchProductJob for barcode: {}", self.barcode);
 
         // Fetch from OpenFoodFacts API
@@ -48,12 +47,8 @@ impl AsyncRunnable for FetchProductJob {
         }
     }
 
-    fn uniq_hash(&self) -> Option<String> {
-        Some(format!("fetch_product_{}", self.barcode))
-    }
-
-    fn retention_mode(&self) -> RetentionMode {
-        RetentionMode::RemoveAll
+    fn uniq(&self) -> bool {
+        true
     }
 
     fn task_type(&self) -> String {
@@ -80,7 +75,7 @@ pub struct AnalyzeIngredientsJob {
 #[typetag::serde]
 #[async_trait]
 impl AsyncRunnable for AnalyzeIngredientsJob {
-    async fn run(&self, _queue: &mut dyn AsyncQueueable) -> Result<(), FangError> {
+    async fn run(&self, _queue: &dyn AsyncQueueable) -> Result<(), FangError> {
         log::info!(
             "Processing AnalyzeIngredientsJob for product_id: {}",
             self.product_id
@@ -93,12 +88,8 @@ impl AsyncRunnable for AnalyzeIngredientsJob {
         Ok(())
     }
 
-    fn uniq_hash(&self) -> Option<String> {
-        Some(format!("analyze_ingredients_{}", self.product_id))
-    }
-
-    fn retention_mode(&self) -> RetentionMode {
-        RetentionMode::RemoveAll
+    fn uniq(&self) -> bool {
+        true
     }
 
     fn task_type(&self) -> String {
@@ -122,7 +113,7 @@ pub struct SendNotificationJob {
 #[typetag::serde]
 #[async_trait]
 impl AsyncRunnable for SendNotificationJob {
-    async fn run(&self, _queue: &mut dyn AsyncQueueable) -> Result<(), FangError> {
+    async fn run(&self, _queue: &dyn AsyncQueueable) -> Result<(), FangError> {
         log::info!(
             "Sending {} notification to user {}: {}",
             self.notification_type,
@@ -140,12 +131,8 @@ impl AsyncRunnable for SendNotificationJob {
         Ok(())
     }
 
-    fn uniq_hash(&self) -> Option<String> {
-        None // Allow multiple notifications
-    }
-
-    fn retention_mode(&self) -> RetentionMode {
-        RetentionMode::RemoveAll
+    fn uniq(&self) -> bool {
+        false // Allow multiple notifications
     }
 
     fn task_type(&self) -> String {
@@ -165,7 +152,7 @@ pub struct CleanupJob {}
 #[typetag::serde]
 #[async_trait]
 impl AsyncRunnable for CleanupJob {
-    async fn run(&self, _queue: &mut dyn AsyncQueueable) -> Result<(), FangError> {
+    async fn run(&self, _queue: &dyn AsyncQueueable) -> Result<(), FangError> {
         log::info!("Running cleanup job");
 
         // Simulate cleanup work
@@ -175,12 +162,8 @@ impl AsyncRunnable for CleanupJob {
         Ok(())
     }
 
-    fn uniq_hash(&self) -> Option<String> {
-        Some("cleanup_job".to_string())
-    }
-
-    fn retention_mode(&self) -> RetentionMode {
-        RetentionMode::RemoveAll
+    fn uniq(&self) -> bool {
+        true
     }
 
     fn task_type(&self) -> String {

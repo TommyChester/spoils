@@ -1,6 +1,5 @@
 use fang::asynk::async_queue::AsyncQueue;
 use fang::asynk::async_worker_pool::AsyncWorkerPool;
-use std::time::Duration;
 
 pub async fn start_worker_pool() {
     let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
@@ -19,7 +18,7 @@ pub async fn start_worker_pool() {
     log::info!("Job queue connected successfully");
 
     // Start worker pool with 5 workers
-    let mut pool: AsyncWorkerPool<AsyncQueue<NoTls>> = AsyncWorkerPool::builder()
+    let mut pool: AsyncWorkerPool = AsyncWorkerPool::builder()
         .number_of_workers(5_u32)
         .queue(queue.clone())
         .build();
