@@ -1,6 +1,5 @@
 use fang::asynk::async_queue::AsyncQueue;
 use fang::asynk::async_worker_pool::AsyncWorkerPool;
-use fang::NoTls;
 use std::time::Duration;
 
 pub async fn start_worker_pool() {
@@ -15,7 +14,7 @@ pub async fn start_worker_pool() {
         .max_pool_size(max_pool_size)
         .build();
 
-    queue.connect(NoTls).await.expect("Failed to connect to database for job queue");
+    queue.connect().await.expect("Failed to connect to database for job queue");
 
     log::info!("Job queue connected successfully");
 

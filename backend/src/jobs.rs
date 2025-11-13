@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use fang::asynk::async_queue::AsyncQueueable;
 use fang::asynk::async_worker_pool::AsyncWorkerPool;
-use fang::{AsyncRunnable, Deserialize, FangError, Scheduled, Serialize};
+use fang::{AsyncRunnable, Deserialize, FangError, Scheduled, Serialize, RetentionMode};
 use serde_json::Value;
 
 /// Job to fetch and cache a product from OpenFoodFacts
@@ -11,6 +11,7 @@ pub struct FetchProductJob {
     pub barcode: String,
 }
 
+#[typetag::serde]
 #[async_trait]
 impl AsyncRunnable for FetchProductJob {
     async fn run(&self, _queue: &mut dyn AsyncQueueable) -> Result<(), FangError> {
@@ -25,7 +26,7 @@ impl AsyncRunnable for FetchProductJob {
 
         match client.get(&url).send().await {
             Ok(response) => match response.json::<Value>().await {
-                Ok(data) => {
+                Ok(_data) => {
                     log::info!("Successfully fetched product {}", self.barcode);
                     // Here you would normally save to database
                     // For now just log success
@@ -47,16 +48,20 @@ impl AsyncRunnable for FetchProductJob {
         }
     }
 
-    fn uniq(&self) -> bool {
-        true
+    fn uniq_hash(&self) -> Option<String> {
+        Some(format!("fetch_product_{}", self.barcode))
+    }
+
+    fn retention_mode(&self) -> RetentionMode {
+        RetentionMode::RemoveAll
     }
 
     fn task_type(&self) -> String {
         "fetch_product".to_string()
     }
 
-    fn cron(&self) -> Option<Scheduled> {
-        None
+    fn cron(&self) -> Scheduled {
+        Scheduled::None
     }
 
     fn max_retries(&self) -> i32 {
@@ -76,6 +81,7 @@ pub struct AnalyzeIngredientsJob {
     pub product_id: i32,
 }
 
+#[typetag::serde]
 #[async_trait]
 impl AsyncRunnable for AnalyzeIngredientsJob {
     async fn run(&self, _queue: &mut dyn AsyncQueueable) -> Result<(), FangError> {
@@ -91,16 +97,20 @@ impl AsyncRunnable for AnalyzeIngredientsJob {
         Ok(())
     }
 
-    fn uniq(&self) -> bool {
-        true
+    fn uniq_hash(&self) -> Option<String> {
+        Some(format!("analyze_ingredients_{}", self.product_id))
+    }
+
+    fn retention_mode(&self) -> RetentionMode {
+        RetentionMode::RemoveAll
     }
 
     fn task_type(&self) -> String {
         "analyze_ingredients".to_string()
     }
 
-    fn cron(&self) -> Option<Scheduled> {
-        None
+    fn cron(&self) -> Scheduled {
+        Scheduled::None
     }
 
     fn max_retries(&self) -> i32 {
@@ -117,6 +127,7 @@ pub struct SendNotificationJob {
     pub message: String,
 }
 
+#[typetag::serde]
 #[async_trait]
 impl AsyncRunnable for SendNotificationJob {
     async fn run(&self, _queue: &mut dyn AsyncQueueable) -> Result<(), FangError> {
@@ -137,16 +148,20 @@ impl AsyncRunnable for SendNotificationJob {
         Ok(())
     }
 
-    fn uniq(&self) -> bool {
-        false // Allow multiple notifications
+    fn uniq_hash(&self) -> Option<String> {
+        None // Allow multiple notifications
+    }
+
+    fn retention_mode(&self) -> RetentionMode {
+        RetentionMode::RemoveAll
     }
 
     fn task_type(&self) -> String {
         "send_notification".to_string()
     }
 
-    fn cron(&self) -> Option<Scheduled> {
-        None
+    fn cron(&self) -> Scheduled {
+        Scheduled::None
     }
 
     fn max_retries(&self) -> i32 {
@@ -159,6 +174,7 @@ impl AsyncRunnable for SendNotificationJob {
 #[serde(crate = "fang::serde")]
 pub struct CleanupJob {}
 
+#[typetag::serde]
 #[async_trait]
 impl AsyncRunnable for CleanupJob {
     async fn run(&self, _queue: &mut dyn AsyncQueueable) -> Result<(), FangError> {
@@ -171,17 +187,21 @@ impl AsyncRunnable for CleanupJob {
         Ok(())
     }
 
-    fn uniq(&self) -> bool {
-        true
+    fn uniq_hash(&self) -> Option<String> {
+        Some("cleanup_job".to_string())
+    }
+
+    fn retention_mode(&self) -> RetentionMode {
+        RetentionMode::RemoveAll
     }
 
     fn task_type(&self) -> String {
         "cleanup".to_string()
     }
 
-    fn cron(&self) -> Option<Scheduled> {
+    fn cron(&self) -> Scheduled {
         // Run every day at 2 AM
-        Some(Scheduled::CronPattern("0 2 * * *".to_string()))
+        Scheduled::CronPattern("0 2 * * *".to_string())
     }
 
     fn max_retries(&self) -> i32 {

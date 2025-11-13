@@ -8,9 +8,8 @@ use actix_web::{get, post, web, App, HttpResponse, HttpServer, Responder};
 use actix_cors::Cors;
 use diesel::prelude::*;
 use serde::{Deserialize, Serialize};
-use fang::asynk::async_queue::AsyncQueue;
+use fang::asynk::async_queue::{AsyncQueue, AsyncQueueable};
 use fang::asynk::async_runnable::AsyncRunnable;
-use fang::NoTls;
 
 use crate::db::DbPool;
 use crate::jobs::{FetchProductJob, AnalyzeIngredientsJob, SendNotificationJob};
@@ -222,13 +221,13 @@ async fn enqueue_fetch_product(
         .max_pool_size(3)
         .build();
 
-    match queue.connect(NoTls).await {
+    match queue.connect().await {
         Ok(_) => {
             let job = FetchProductJob {
                 barcode: body.barcode.clone(),
             };
 
-            match queue.insert_task(&job as &dyn AsyncRunnable).await {
+            match queue.insert_task(&job).await {
                 Ok(_) => {
                     log::info!("Enqueued fetch product job for barcode: {}", body.barcode);
                     HttpResponse::Ok().json(serde_json::json!({
@@ -269,13 +268,13 @@ async fn enqueue_analyze_ingredients(
         .max_pool_size(3)
         .build();
 
-    match queue.connect(NoTls).await {
+    match queue.connect().await {
         Ok(_) => {
             let job = AnalyzeIngredientsJob {
                 product_id: body.product_id,
             };
 
-            match queue.insert_task(&job as &dyn AsyncRunnable).await {
+            match queue.insert_task(&job).await {
                 Ok(_) => {
                     log::info!("Enqueued ingredient analysis job for product: {}", body.product_id);
                     HttpResponse::Ok().json(serde_json::json!({
@@ -309,7 +308,7 @@ async fn job_status() -> impl Responder {
         .max_pool_size(3)
         .build();
 
-    match queue.connect(NoTls).await {
+    match queue.connect().await {
         Ok(_) => {
             // Query job statistics
             HttpResponse::Ok().json(serde_json::json!({
