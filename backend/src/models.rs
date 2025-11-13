@@ -1,5 +1,4 @@
 use diesel::prelude::*;
-use diesel::sql_types::Varchar;
 use serde::{Deserialize, Serialize};
 use chrono::NaiveDateTime;
 

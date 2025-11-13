@@ -198,7 +198,7 @@ impl AsyncRunnable for CreateIngredientJob {
 
         // Establish database connection
         use diesel::r2d2::{self, ConnectionManager};
-        use diesel::PgConnection;
+        use diesel::{PgConnection, RunQueryDsl};
         use crate::models::NewIngredient;
         use crate::schema::ingredients;
 
