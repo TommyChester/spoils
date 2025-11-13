@@ -101,13 +101,12 @@ impl Ingredient {
         conn: &mut PgConnection,
     ) -> Result<Option<i32>, diesel::result::Error> {
         use crate::schema::ingredients::dsl::*;
-        use diesel::dsl::lower;
+        use diesel::dsl::sql;
+        use diesel::sql_types::Bool;
 
-        let search_name = ingredient_name.to_lowercase();
-
-        // Try to find with case-insensitive search
+        // Try to find with case-insensitive search using ILIKE
         let found = ingredients
-            .filter(lower(name).eq(&search_name))
+            .filter(sql::<Bool>(&format!("LOWER(name) = LOWER('{}')", ingredient_name.replace("'", "''"))))
             .select(id)
             .first::<i32>(conn)
             .optional()?;
