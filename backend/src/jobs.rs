@@ -10,6 +10,7 @@ pub struct FetchProductJob {
     pub barcode: String,
 }
 
+#[typetag::serde]
 #[async_trait]
 impl AsyncRunnable for FetchProductJob {
     async fn run(&self, _queue: &mut dyn AsyncQueueable) -> Result<(), FangError> {
@@ -71,8 +72,9 @@ pub struct AnalyzeIngredientsJob {
     pub product_id: i32,
 }
 
+#[typetag::serde]
 #[async_trait]
-impl AsyncRunnable forAnalyzeIngredientsJob {
+impl AsyncRunnable for AnalyzeIngredientsJob {
     async fn run(&self, _queue: &mut dyn AsyncQueueable) -> Result<(), FangError> {
         log::info!(
             "Processing AnalyzeIngredientsJob for product_id: {}",
@@ -108,8 +110,9 @@ pub struct SendNotificationJob {
     pub message: String,
 }
 
+#[typetag::serde]
 #[async_trait]
-impl AsyncRunnable forSendNotificationJob {
+impl AsyncRunnable for SendNotificationJob {
     async fn run(&self, _queue: &mut dyn AsyncQueueable) -> Result<(), FangError> {
         log::info!(
             "Sending {} notification to user {}: {}",
@@ -146,8 +149,9 @@ impl AsyncRunnable forSendNotificationJob {
 #[serde(crate = "fang::serde")]
 pub struct CleanupJob {}
 
+#[typetag::serde]
 #[async_trait]
-impl AsyncRunnable forCleanupJob {
+impl AsyncRunnable for CleanupJob {
     async fn run(&self, _queue: &mut dyn AsyncQueueable) -> Result<(), FangError> {
         log::info!("Running cleanup job");
 
