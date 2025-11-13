@@ -149,6 +149,13 @@ impl AsyncRunnable for SendNotificationJob {
 #[serde(crate = "fang::serde")]
 pub struct CleanupJob {}
 
+/// Job to create a new ingredient
+#[derive(Serialize, Deserialize)]
+#[serde(crate = "fang::serde")]
+pub struct CreateIngredientJob {
+    pub name: String,
+}
+
 #[typetag::serde]
 #[async_trait]
 impl AsyncRunnable for CleanupJob {
@@ -177,5 +184,64 @@ impl AsyncRunnable for CleanupJob {
 
     fn max_retries(&self) -> i32 {
         1
+    }
+}
+
+#[typetag::serde]
+#[async_trait]
+impl AsyncRunnable for CreateIngredientJob {
+    async fn run(&self, _queue: &mut dyn AsyncQueueable) -> Result<(), FangError> {
+        log::info!("Creating ingredient: {}", self.name);
+
+        // Get database URL
+        let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
+
+        // Establish database connection
+        use diesel::r2d2::{self, ConnectionManager};
+        use diesel::PgConnection;
+        use crate::models::NewIngredient;
+        use crate::schema::ingredients;
+
+        let manager = ConnectionManager::<PgConnection>::new(database_url);
+        let pool = r2d2::Pool::builder()
+            .max_size(3)
+            .build(manager)
+            .expect("Failed to create pool");
+
+        let mut conn = pool.get().expect("Failed to get connection from pool");
+
+        // Create new ingredient with just the name
+        let new_ingredient = NewIngredient {
+            name: self.name.clone(),
+            branded: false, // Default to non-branded
+        };
+
+        match diesel::insert_into(ingredients::table)
+            .values(&new_ingredient)
+            .execute(&mut conn)
+        {
+            Ok(_) => {
+                log::info!("Successfully created ingredient: {}", self.name);
+                Ok(())
+            }
+            Err(e) => {
+                log::error!("Failed to create ingredient '{}': {}", self.name, e);
+                Err(FangError {
+                    description: format!("Database error: {}", e),
+                })
+            }
+        }
+    }
+
+    fn uniq(&self) -> bool {
+        true // Prevent duplicate creation jobs for the same ingredient
+    }
+
+    fn task_type(&self) -> String {
+        "create_ingredient".to_string()
+    }
+
+    fn max_retries(&self) -> i32 {
+        3
     }
 }
