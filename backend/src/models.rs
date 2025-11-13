@@ -134,11 +134,17 @@ impl Ingredient {
 
             let mut queue = AsyncQueue::builder()
                 .uri(database_url)
-                .max_pool_size(3_u32)
+                .max_pool_size(1_u32)  // Use small pool size to avoid overwhelming DB
                 .build();
 
-            match queue.connect(NoTls).await {
-                Ok(_) => {
+            // Use timeout for connection to avoid blocking forever
+            let connect_result = tokio::time::timeout(
+                std::time::Duration::from_secs(5),
+                queue.connect(NoTls)
+            ).await;
+
+            match connect_result {
+                Ok(Ok(_)) => {
                     let job = CreateIngredientJob {
                         name: ingredient_name_clone.clone(),
                     };
@@ -148,12 +154,15 @@ impl Ingredient {
                             log::info!("Successfully enqueued CreateIngredientJob for '{}'", ingredient_name_clone);
                         }
                         Err(e) => {
-                            log::error!("Failed to enqueue job: {:?}", e);
+                            log::error!("Failed to enqueue job for '{}': {:?}", ingredient_name_clone, e);
                         }
                     }
                 }
-                Err(e) => {
-                    log::error!("Failed to connect to job queue: {:?}", e);
+                Ok(Err(e)) => {
+                    log::error!("Failed to connect to job queue for '{}': {:?}", ingredient_name_clone, e);
+                }
+                Err(_) => {
+                    log::error!("Timeout connecting to job queue for '{}'", ingredient_name_clone);
                 }
             }
         });
