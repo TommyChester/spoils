@@ -236,12 +236,19 @@ impl AsyncRunnable for CreateIngredientJob {
             }
         };
 
-        match diesel::insert_into(ingredients::table)
+        let result = diesel::insert_into(ingredients::table)
             .values(&new_ingredient)
-            .execute(&mut conn)
-        {
-            Ok(_) => {
-                log::info!("Successfully created ingredient: {}", self.name);
+            .get_result::<crate::models::Ingredient>(&mut conn);
+
+        match result {
+            Ok(created_ingredient) => {
+                log::info!("Successfully created ingredient: {} (ID: {})", self.name, created_ingredient.id);
+
+                // Check for sub-ingredients and enqueue them
+                if let Some(data) = usda_data {
+                    self.process_sub_ingredients(&data, created_ingredient.id).await;
+                }
+
                 Ok(())
             }
             Err(e) => {
@@ -266,12 +273,13 @@ impl AsyncRunnable for CreateIngredientJob {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct USDANutritionData {
     protein: Option<f32>,
     carbs: Option<f32>,
     fat: Option<f32>,
     fiber: Option<f32>,
+    food_data: serde_json::Value, // Store full food data for sub-ingredient extraction
 }
 
 impl CreateIngredientJob {
@@ -364,6 +372,95 @@ impl CreateIngredientJob {
             carbs,
             fat,
             fiber,
+            food_data: food.clone(), // Store full food data for sub-ingredient parsing
         })
+    }
+
+    /// Process sub-ingredients: check if ingredient has components and enqueue jobs
+    async fn process_sub_ingredients(&self, usda_data: &USDANutritionData, parent_id: i32) {
+        log::info!("Checking for sub-ingredients in '{}'", self.name);
+
+        // Try to extract ingredients from the food data
+        // USDA Branded foods sometimes have an "ingredients" field
+        let ingredients_text = usda_data.food_data
+            .get("ingredients")
+            .or_else(|| usda_data.food_data.get("ingredientStatement"))
+            .and_then(|i| i.as_str());
+
+        if let Some(ingredients) = ingredients_text {
+            log::info!("Found ingredient list for '{}': {}", self.name, ingredients);
+
+            // Parse ingredients (comma-separated, handle parentheses)
+            let sub_ingredients = self.parse_ingredient_list(ingredients);
+
+            if sub_ingredients.is_empty() {
+                log::info!("'{}' is a basic ingredient (no sub-ingredients)", self.name);
+                return;
+            }
+
+            log::info!("'{}' has {} sub-ingredients", self.name, sub_ingredients.len());
+
+            // Enqueue jobs for each sub-ingredient
+            let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
+
+            let mut queue = fang::asynk::async_queue::AsyncQueue::builder()
+                .uri(database_url)
+                .max_pool_size(3_u32)
+                .build();
+
+            match queue.connect(fang::NoTls).await {
+                Ok(_) => {
+                    for sub_ingredient_name in sub_ingredients {
+                        log::info!("Enqueueing sub-ingredient '{}' for parent '{}'", sub_ingredient_name, self.name);
+
+                        let job = CreateIngredientJob {
+                            name: sub_ingredient_name.clone(),
+                        };
+
+                        match queue.insert_task(&job).await {
+                            Ok(_) => {
+                                log::info!("Enqueued CreateIngredientJob for sub-ingredient: {}", sub_ingredient_name);
+                            }
+                            Err(e) => {
+                                log::error!("Failed to enqueue sub-ingredient '{}': {:?}", sub_ingredient_name, e);
+                            }
+                        }
+                    }
+                }
+                Err(e) => {
+                    log::error!("Failed to connect to job queue for sub-ingredients: {:?}", e);
+                }
+            }
+        } else {
+            log::info!("'{}' is a basic ingredient (no ingredient statement found)", self.name);
+        }
+    }
+
+    /// Parse ingredient list from text (handles commas, parentheses, etc.)
+    fn parse_ingredient_list(&self, ingredients_text: &str) -> Vec<String> {
+        let mut ingredients = Vec::new();
+
+        // Simple parsing: split by comma, clean up
+        // TODO: Handle parentheses properly for sub-sub-ingredients
+        for part in ingredients_text.split(',') {
+            let clean = part
+                .trim()
+                .trim_end_matches('.')
+                .to_string();
+
+            // Remove percentage notations like "2%" or "(Contains 2% or less of...)"
+            let clean = clean
+                .split('(')
+                .next()
+                .unwrap_or(&clean)
+                .trim()
+                .to_string();
+
+            if !clean.is_empty() && clean.len() > 1 {
+                ingredients.push(clean);
+            }
+        }
+
+        ingredients
     }
 }
