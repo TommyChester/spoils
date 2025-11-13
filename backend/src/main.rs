@@ -299,6 +299,105 @@ fn process_product_ingredients(product_data: &serde_json::Value, pool: &web::Dat
     }
 }
 
+/// Process ingredients from non-food products (supplements, beauty, etc.)
+fn process_non_food_ingredients(product: &ProductNonFood, pool: &web::Data<DbPool>) {
+    log::info!("Extracting ingredients from non-food product: {}", product.name);
+
+    // Try to extract ingredients from description
+    // Look for patterns like "Ingredients:" or "Contains:" followed by comma-separated list
+    let ingredients_text = if let Some(ref description) = product.description {
+        extract_ingredients_from_text(description)
+    } else {
+        None
+    };
+
+    if let Some(ingredients) = ingredients_text {
+        log::info!("Found ingredients in description: {}", ingredients);
+
+        let mut conn = match pool.get() {
+            Ok(conn) => conn,
+            Err(e) => {
+                log::error!("Failed to get DB connection for ingredient processing: {}", e);
+                return;
+            }
+        };
+
+        // Split by commas and process each ingredient
+        for ingredient_name in ingredients.split(',') {
+            let clean_name = ingredient_name
+                .trim()
+                .trim_end_matches('.')
+                .trim_end_matches(';');
+
+            // Skip common non-ingredient words
+            if clean_name.is_empty() ||
+               clean_name.len() < 2 ||
+               clean_name.eq_ignore_ascii_case("and") ||
+               clean_name.eq_ignore_ascii_case("or") {
+                continue;
+            }
+
+            log::info!("Processing ingredient: {}", clean_name);
+
+            match Ingredient::find_or_enqueue_for_creation(clean_name, &mut conn) {
+                Ok(Some(id)) => {
+                    log::info!("Ingredient '{}' found with ID: {}", clean_name, id);
+                }
+                Ok(None) => {
+                    log::info!("Ingredient '{}' enqueued for creation", clean_name);
+                }
+                Err(e) => {
+                    log::error!("Error processing ingredient '{}': {}", clean_name, e);
+                }
+            }
+        }
+    } else {
+        log::info!("No ingredients found in product description");
+    }
+}
+
+/// Extract ingredients from text by looking for "Ingredients:", "Contains:", etc.
+fn extract_ingredients_from_text(text: &str) -> Option<String> {
+    let text_lower = text.to_lowercase();
+
+    // Look for common ingredient markers
+    let markers = [
+        "ingredients:",
+        "contains:",
+        "active ingredients:",
+        "inactive ingredients:",
+        "other ingredients:",
+    ];
+
+    for marker in &markers {
+        if let Some(start_idx) = text_lower.find(marker) {
+            let ingredients_start = start_idx + marker.len();
+            let remaining_text = &text[ingredients_start..];
+
+            // Take until we hit a period followed by capital letter, or end of string
+            // This helps separate the ingredient list from following sentences
+            let mut end_idx = remaining_text.len();
+
+            // Look for common ending patterns
+            if let Some(idx) = remaining_text.find(". ") {
+                // Check if next character is uppercase (likely new sentence)
+                if let Some(next_char) = remaining_text.chars().nth(idx + 2) {
+                    if next_char.is_uppercase() {
+                        end_idx = idx;
+                    }
+                }
+            }
+
+            let ingredients = remaining_text[..end_idx].trim();
+            if !ingredients.is_empty() {
+                return Some(ingredients.to_string());
+            }
+        }
+    }
+
+    None
+}
+
 // ============= Non-Food Products Endpoints =============
 
 #[get("/api/products-non-food/{barcode}")]
@@ -400,6 +499,20 @@ async fn create_product_non_food(
     match inserted_product {
         Ok(Ok(product)) => {
             log::info!("Non-food product '{}' created with ID: {}", product.name, product.id);
+
+            // Process ingredients for supplements and beauty products
+            if let Some(ref category) = product.category {
+                let category_lower = category.to_lowercase();
+                if category_lower.contains("supplement") ||
+                   category_lower.contains("beauty") ||
+                   category_lower.contains("cosmetic") ||
+                   category_lower.contains("skincare") ||
+                   category_lower.contains("vitamin") {
+                    log::info!("Processing ingredients for {} product: {}", category, product.name);
+                    process_non_food_ingredients(&product, &pool);
+                }
+            }
+
             HttpResponse::Created().json(product)
         }
         Ok(Err(e)) => {
