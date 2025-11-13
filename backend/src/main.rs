@@ -1,13 +1,19 @@
 mod db;
+mod jobs;
 mod models;
 mod schema;
+mod workers;
 
-use actix_web::{get, web, App, HttpResponse, HttpServer, Responder};
+use actix_web::{get, post, web, App, HttpResponse, HttpServer, Responder};
 use actix_cors::Cors;
 use diesel::prelude::*;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use fang::asynk::async_queue::AsyncQueue;
+use fang::asynk::async_runnable::AsyncRunnable;
+use fang::NoTls;
 
 use crate::db::DbPool;
+use crate::jobs::{FetchProductJob, AnalyzeIngredientsJob, SendNotificationJob};
 use crate::models::{NewProduct, OpenFoodFactsResponse, Product};
 use crate::schema::products;
 
@@ -199,6 +205,127 @@ async fn get_product(
     }
 }
 
+// Job enqueueing endpoints
+#[derive(Deserialize)]
+struct EnqueueProductJobRequest {
+    barcode: String,
+}
+
+#[post("/api/jobs/fetch-product")]
+async fn enqueue_fetch_product(
+    body: web::Json<EnqueueProductJobRequest>,
+) -> impl Responder {
+    let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
+
+    let mut queue = AsyncQueue::builder()
+        .uri(database_url)
+        .max_pool_size(3)
+        .build();
+
+    match queue.connect(NoTls).await {
+        Ok(_) => {
+            let job = FetchProductJob {
+                barcode: body.barcode.clone(),
+            };
+
+            match queue.insert_task(&job as &dyn AsyncRunnable).await {
+                Ok(_) => {
+                    log::info!("Enqueued fetch product job for barcode: {}", body.barcode);
+                    HttpResponse::Ok().json(serde_json::json!({
+                        "message": "Job enqueued successfully",
+                        "barcode": body.barcode
+                    }))
+                }
+                Err(e) => {
+                    log::error!("Failed to enqueue job: {:?}", e);
+                    HttpResponse::InternalServerError().json(serde_json::json!({
+                        "error": "Failed to enqueue job"
+                    }))
+                }
+            }
+        }
+        Err(e) => {
+            log::error!("Failed to connect to job queue: {:?}", e);
+            HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "Failed to connect to job queue"
+            }))
+        }
+    }
+}
+
+#[derive(Deserialize)]
+struct EnqueueAnalysisJobRequest {
+    product_id: i32,
+}
+
+#[post("/api/jobs/analyze-ingredients")]
+async fn enqueue_analyze_ingredients(
+    body: web::Json<EnqueueAnalysisJobRequest>,
+) -> impl Responder {
+    let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
+
+    let mut queue = AsyncQueue::builder()
+        .uri(database_url)
+        .max_pool_size(3)
+        .build();
+
+    match queue.connect(NoTls).await {
+        Ok(_) => {
+            let job = AnalyzeIngredientsJob {
+                product_id: body.product_id,
+            };
+
+            match queue.insert_task(&job as &dyn AsyncRunnable).await {
+                Ok(_) => {
+                    log::info!("Enqueued ingredient analysis job for product: {}", body.product_id);
+                    HttpResponse::Ok().json(serde_json::json!({
+                        "message": "Analysis job enqueued successfully",
+                        "product_id": body.product_id
+                    }))
+                }
+                Err(e) => {
+                    log::error!("Failed to enqueue analysis job: {:?}", e);
+                    HttpResponse::InternalServerError().json(serde_json::json!({
+                        "error": "Failed to enqueue job"
+                    }))
+                }
+            }
+        }
+        Err(e) => {
+            log::error!("Failed to connect to job queue: {:?}", e);
+            HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "Failed to connect to job queue"
+            }))
+        }
+    }
+}
+
+#[get("/api/jobs/status")]
+async fn job_status() -> impl Responder {
+    let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
+
+    let mut queue = AsyncQueue::builder()
+        .uri(database_url)
+        .max_pool_size(3)
+        .build();
+
+    match queue.connect(NoTls).await {
+        Ok(_) => {
+            // Query job statistics
+            HttpResponse::Ok().json(serde_json::json!({
+                "message": "Job queue is operational",
+                "status": "running"
+            }))
+        }
+        Err(e) => {
+            log::error!("Failed to connect to job queue: {:?}", e);
+            HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "Failed to connect to job queue"
+            }))
+        }
+    }
+}
+
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     dotenvy::dotenv().ok();
@@ -215,6 +342,14 @@ async fn main() -> std::io::Result<()> {
     let pool = db::establish_connection_pool();
     log::info!("Database connection pool established");
 
+    // Start background worker pool in a separate task
+    tokio::spawn(async move {
+        log::info!("Starting background job worker pool...");
+        workers::start_worker_pool().await;
+    });
+
+    log::info!("Worker pool started in background");
+
     HttpServer::new(move || {
         let cors = Cors::permissive(); // Configure this properly for production
 
@@ -225,6 +360,9 @@ async fn main() -> std::io::Result<()> {
             .service(health)
             .service(hello)
             .service(get_product)
+            .service(enqueue_fetch_product)
+            .service(enqueue_analyze_ingredients)
+            .service(job_status)
     })
     .bind(("0.0.0.0", port))?
     .run()
