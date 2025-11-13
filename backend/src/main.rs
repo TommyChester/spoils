@@ -9,6 +9,7 @@ use actix_cors::Cors;
 use diesel::prelude::*;
 use serde::{Deserialize, Serialize};
 use fang::asynk::async_queue::{AsyncQueue, AsyncQueueable};
+use fang::NoTls;
 
 use crate::db::DbPool;
 use crate::jobs::{FetchProductJob, AnalyzeIngredientsJob};
@@ -220,7 +221,7 @@ async fn enqueue_fetch_product(
         .max_pool_size(3_u32)
         .build();
 
-    match queue.connect().await {
+    match queue.connect(NoTls).await {
         Ok(_) => {
             let job = FetchProductJob {
                 barcode: body.barcode.clone(),
@@ -267,7 +268,7 @@ async fn enqueue_analyze_ingredients(
         .max_pool_size(3_u32)
         .build();
 
-    match queue.connect().await {
+    match queue.connect(NoTls).await {
         Ok(_) => {
             let job = AnalyzeIngredientsJob {
                 product_id: body.product_id,
@@ -307,7 +308,7 @@ async fn job_status() -> impl Responder {
         .max_pool_size(3_u32)
         .build();
 
-    match queue.connect().await {
+    match queue.connect(NoTls).await {
         Ok(_) => {
             // Query job statistics
             HttpResponse::Ok().json(serde_json::json!({
