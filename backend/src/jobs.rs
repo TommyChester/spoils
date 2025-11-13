@@ -214,7 +214,7 @@ impl AsyncRunnable for CreateIngredientJob {
         let mut conn = pool.get().expect("Failed to get connection from pool");
 
         // Create new ingredient with nutritional data if available
-        let new_ingredient = if let Some(data) = usda_data {
+        let new_ingredient = if let Some(ref data) = usda_data {
             log::info!("Found USDA data for ingredient: {}", self.name);
             NewIngredient {
                 name: self.name.clone(),
@@ -245,8 +245,8 @@ impl AsyncRunnable for CreateIngredientJob {
                 log::info!("Successfully created ingredient: {} (ID: {})", self.name, created_ingredient.id);
 
                 // Check for sub-ingredients and enqueue them
-                if let Some(data) = usda_data {
-                    self.process_sub_ingredients(&data, created_ingredient.id).await;
+                if let Some(ref data) = usda_data {
+                    self.process_sub_ingredients(data, created_ingredient.id).await;
                 }
 
                 Ok(())
@@ -377,7 +377,7 @@ impl CreateIngredientJob {
     }
 
     /// Process sub-ingredients: check if ingredient has components and enqueue jobs
-    async fn process_sub_ingredients(&self, usda_data: &USDANutritionData, parent_id: i32) {
+    async fn process_sub_ingredients(&self, usda_data: &USDANutritionData, _parent_id: i32) {
         log::info!("Checking for sub-ingredients in '{}'", self.name);
 
         // Try to extract ingredients from the food data
