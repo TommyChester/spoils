@@ -18,7 +18,7 @@ pub async fn start_worker_pool() {
     log::info!("Job queue connected successfully");
 
     // Start worker pool with 5 workers
-    let mut pool: AsyncWorkerPool = AsyncWorkerPool::builder()
+    let mut pool: AsyncWorkerPool<AsyncQueue> = AsyncWorkerPool::builder()
         .number_of_workers(5_u32)
         .queue(queue.clone())
         .build();

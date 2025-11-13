@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use fang::asynk::async_queue::{AsyncQueue, AsyncQueueable};
 
 use crate::db::DbPool;
-use crate::jobs::{FetchProductJob, AnalyzeIngredientsJob, SendNotificationJob};
+use crate::jobs::{FetchProductJob, AnalyzeIngredientsJob};
 use crate::models::{NewProduct, OpenFoodFactsResponse, Product};
 use crate::schema::products;
 
