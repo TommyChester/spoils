@@ -9,7 +9,6 @@ use actix_cors::Cors;
 use diesel::prelude::*;
 use serde::{Deserialize, Serialize};
 use fang::asynk::async_queue::{AsyncQueue, AsyncQueueable};
-use fang::asynk::async_runnable::AsyncRunnable;
 
 use crate::db::DbPool;
 use crate::jobs::{FetchProductJob, AnalyzeIngredientsJob, SendNotificationJob};
@@ -218,7 +217,7 @@ async fn enqueue_fetch_product(
 
     let mut queue = AsyncQueue::builder()
         .uri(database_url)
-        .max_pool_size(3)
+        .max_pool_size(3_u32)
         .build();
 
     match queue.connect().await {
@@ -265,7 +264,7 @@ async fn enqueue_analyze_ingredients(
 
     let mut queue = AsyncQueue::builder()
         .uri(database_url)
-        .max_pool_size(3)
+        .max_pool_size(3_u32)
         .build();
 
     match queue.connect().await {
@@ -305,7 +304,7 @@ async fn job_status() -> impl Responder {
 
     let mut queue = AsyncQueue::builder()
         .uri(database_url)
-        .max_pool_size(3)
+        .max_pool_size(3_u32)
         .build();
 
     match queue.connect().await {

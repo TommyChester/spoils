@@ -60,10 +60,6 @@ impl AsyncRunnable for FetchProductJob {
         "fetch_product".to_string()
     }
 
-    fn cron(&self) -> Scheduled {
-        Scheduled::None
-    }
-
     fn max_retries(&self) -> i32 {
         3
     }
@@ -107,10 +103,6 @@ impl AsyncRunnable for AnalyzeIngredientsJob {
 
     fn task_type(&self) -> String {
         "analyze_ingredients".to_string()
-    }
-
-    fn cron(&self) -> Scheduled {
-        Scheduled::None
     }
 
     fn max_retries(&self) -> i32 {
@@ -160,10 +152,6 @@ impl AsyncRunnable for SendNotificationJob {
         "send_notification".to_string()
     }
 
-    fn cron(&self) -> Scheduled {
-        Scheduled::None
-    }
-
     fn max_retries(&self) -> i32 {
         5
     }
@@ -199,9 +187,9 @@ impl AsyncRunnable for CleanupJob {
         "cleanup".to_string()
     }
 
-    fn cron(&self) -> Scheduled {
+    fn cron(&self) -> Option<Scheduled> {
         // Run every day at 2 AM
-        Scheduled::CronPattern("0 2 * * *".to_string())
+        Some(Scheduled::CronPattern("0 2 * * *".to_string()))
     }
 
     fn max_retries(&self) -> i32 {
