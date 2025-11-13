@@ -13,8 +13,8 @@ use fang::NoTls;
 
 use crate::db::DbPool;
 use crate::jobs::{FetchProductJob, AnalyzeIngredientsJob};
-use crate::models::{NewProduct, OpenFoodFactsResponse, Product, Ingredient};
-use crate::schema::products;
+use crate::models::{NewProduct, OpenFoodFactsResponse, Product, Ingredient, ProductNonFood, NewProductNonFood};
+use crate::schema::{products, products_non_food};
 
 #[derive(Serialize)]
 struct HealthResponse {
@@ -299,6 +299,170 @@ fn process_product_ingredients(product_data: &serde_json::Value, pool: &web::Dat
     }
 }
 
+// ============= Non-Food Products Endpoints =============
+
+#[get("/api/products-non-food/{barcode}")]
+async fn get_product_non_food(
+    barcode: web::Path<String>,
+    pool: web::Data<DbPool>,
+) -> impl Responder {
+    let barcode = barcode.into_inner();
+
+    let mut conn = match pool.get() {
+        Ok(conn) => conn,
+        Err(e) => {
+            log::error!("Failed to get DB connection: {}", e);
+            return HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "Database connection failed"
+            }));
+        }
+    };
+
+    // Try to find product in database
+    let barcode_clone = barcode.clone();
+    let existing_product = web::block(move || {
+        products_non_food::table
+            .filter(products_non_food::barcode.eq(&barcode_clone))
+            .first::<ProductNonFood>(&mut conn)
+            .optional()
+    })
+    .await;
+
+    match existing_product {
+        Ok(Ok(Some(product))) => {
+            log::info!("Non-food product {} found in database", barcode);
+            HttpResponse::Ok().json(product)
+        }
+        Ok(Ok(None)) => {
+            log::info!("Non-food product {} not found in database", barcode);
+            HttpResponse::NotFound().json(serde_json::json!({
+                "error": "Product not found",
+                "barcode": barcode
+            }))
+        }
+        Ok(Err(e)) => {
+            log::error!("Database query error: {}", e);
+            HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "Database query failed"
+            }))
+        }
+        Err(e) => {
+            log::error!("Blocking error: {}", e);
+            HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "Internal server error"
+            }))
+        }
+    }
+}
+
+#[derive(Deserialize)]
+struct CreateProductNonFoodRequest {
+    barcode: Option<String>,
+    name: String,
+    brand: Option<String>,
+    category: Option<String>,
+    description: Option<String>,
+    data_source: Option<String>,
+}
+
+#[post("/api/products-non-food")]
+async fn create_product_non_food(
+    body: web::Json<CreateProductNonFoodRequest>,
+    pool: web::Data<DbPool>,
+) -> impl Responder {
+    let new_product = NewProductNonFood {
+        barcode: body.barcode.clone(),
+        name: body.name.clone(),
+        brand: body.brand.clone(),
+        category: body.category.clone(),
+        description: body.description.clone(),
+        full_response: None,
+        data_source: body.data_source.clone(),
+    };
+
+    let mut conn = match pool.get() {
+        Ok(conn) => conn,
+        Err(e) => {
+            log::error!("Failed to get DB connection: {}", e);
+            return HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "Database connection failed"
+            }));
+        }
+    };
+
+    let inserted_product = web::block(move || {
+        diesel::insert_into(products_non_food::table)
+            .values(&new_product)
+            .get_result::<ProductNonFood>(&mut conn)
+    })
+    .await;
+
+    match inserted_product {
+        Ok(Ok(product)) => {
+            log::info!("Non-food product '{}' created with ID: {}", product.name, product.id);
+            HttpResponse::Created().json(product)
+        }
+        Ok(Err(e)) => {
+            log::error!("Failed to create non-food product: {}", e);
+            HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "Failed to create product",
+                "details": format!("{}", e)
+            }))
+        }
+        Err(e) => {
+            log::error!("Blocking error: {}", e);
+            HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "Internal server error"
+            }))
+        }
+    }
+}
+
+#[get("/api/products-non-food")]
+async fn list_products_non_food(
+    pool: web::Data<DbPool>,
+) -> impl Responder {
+    let mut conn = match pool.get() {
+        Ok(conn) => conn,
+        Err(e) => {
+            log::error!("Failed to get DB connection: {}", e);
+            return HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "Database connection failed"
+            }));
+        }
+    };
+
+    let products = web::block(move || {
+        products_non_food::table
+            .order(products_non_food::created_at.desc())
+            .limit(100)
+            .load::<ProductNonFood>(&mut conn)
+    })
+    .await;
+
+    match products {
+        Ok(Ok(products_list)) => {
+            log::info!("Retrieved {} non-food products", products_list.len());
+            HttpResponse::Ok().json(serde_json::json!({
+                "products": products_list,
+                "count": products_list.len()
+            }))
+        }
+        Ok(Err(e)) => {
+            log::error!("Database query error: {}", e);
+            HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "Database query failed"
+            }))
+        }
+        Err(e) => {
+            log::error!("Blocking error: {}", e);
+            HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "Internal server error"
+            }))
+        }
+    }
+}
+
 // Job enqueueing endpoints
 #[derive(Deserialize)]
 struct EnqueueProductJobRequest {
@@ -454,6 +618,9 @@ async fn main() -> std::io::Result<()> {
             .service(health)
             .service(hello)
             .service(get_product)
+            .service(get_product_non_food)
+            .service(create_product_non_food)
+            .service(list_products_non_food)
             .service(enqueue_fetch_product)
             .service(enqueue_analyze_ingredients)
             .service(job_status)

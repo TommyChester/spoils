@@ -1,6 +1,6 @@
 use diesel::prelude::*;
 use serde::{Deserialize, Serialize};
-use chrono::NaiveDateTime;
+use chrono::{NaiveDateTime, NaiveDate};
 
 #[derive(Queryable, Serialize, Selectable)]
 #[diesel(table_name = crate::schema::products)]
@@ -160,4 +160,82 @@ impl Ingredient {
 
         Ok(None)
     }
+}
+
+// ============= Non-Food Products =============
+
+#[derive(Queryable, Serialize, Selectable, Debug)]
+#[diesel(table_name = crate::schema::products_non_food)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct ProductNonFood {
+    pub id: i32,
+    pub barcode: Option<String>,
+    pub upc: Option<String>,
+    pub sku: Option<String>,
+    pub name: String,
+    pub brand: Option<String>,
+    pub manufacturer: Option<String>,
+    pub model_number: Option<String>,
+    pub category: Option<String>,
+    pub subcategory: Option<String>,
+    pub description: Option<String>,
+    pub weight_grams: Option<f32>,
+    pub length_cm: Option<f32>,
+    pub width_cm: Option<f32>,
+    pub height_cm: Option<f32>,
+    pub volume_ml: Option<f32>,
+    pub color: Option<String>,
+    pub material: Option<serde_json::Value>,
+    pub size: Option<String>,
+    pub certifications: Option<serde_json::Value>,
+    pub safety_warnings: Option<String>,
+    pub age_restriction: Option<i32>,
+    pub contains_batteries: Option<bool>,
+    pub hazardous_materials: Option<serde_json::Value>,
+    pub country_of_origin: Option<String>,
+    pub recyclable: Option<bool>,
+    pub recycling_info: Option<String>,
+    pub eco_certifications: Option<serde_json::Value>,
+    pub sustainability_score: Option<f32>,
+    pub carbon_footprint_kg: Option<f32>,
+    pub packaging_type: Option<String>,
+    pub biodegradable: Option<bool>,
+    pub instructions: Option<String>,
+    pub care_instructions: Option<String>,
+    pub warranty_months: Option<i32>,
+    pub lifespan_estimate_years: Option<f32>,
+    pub maintenance_schedule: Option<String>,
+    pub msrp_usd: Option<f32>,
+    pub current_price_usd: Option<f32>,
+    pub currency: Option<String>,
+    pub availability: Option<String>,
+    pub release_date: Option<NaiveDate>,
+    pub discontinued_date: Option<NaiveDate>,
+    pub average_rating: Option<f32>,
+    pub total_reviews: Option<i32>,
+    pub images: Option<serde_json::Value>,
+    pub videos: Option<serde_json::Value>,
+    pub manuals: Option<serde_json::Value>,
+    pub features: Option<serde_json::Value>,
+    pub specifications: Option<serde_json::Value>,
+    pub compatible_with: Option<serde_json::Value>,
+    pub alternatives: Option<serde_json::Value>,
+    pub tags: Option<serde_json::Value>,
+    pub full_response: Option<serde_json::Value>,
+    pub data_source: Option<String>,
+    pub created_at: NaiveDateTime,
+    pub updated_at: NaiveDateTime,
+    pub last_verified_at: Option<NaiveDateTime>,
+}
+
+#[derive(Insertable)]
+#[diesel(table_name = crate::schema::products_non_food)]
+pub struct NewProductNonFood {
+    pub barcode: Option<String>,
+    pub name: String,
+    pub brand: Option<String>,
+    pub category: Option<String>,
+    pub description: Option<String>,
+    pub full_response: Option<serde_json::Value>,
+    pub data_source: Option<String>,
 }
