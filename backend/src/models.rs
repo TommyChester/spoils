@@ -90,6 +90,10 @@ pub struct Ingredient {
 pub struct NewIngredient {
     pub name: String,
     pub branded: bool,
+    pub gram_protein_per_gram: Option<f32>,
+    pub gram_carbs_per_gram: Option<f32>,
+    pub gram_fat_per_gram: Option<f32>,
+    pub gram_fiber_per_gram: Option<f32>,
 }
 
 impl Ingredient {

@@ -19,3 +19,4 @@ uuid = { version = "1.0", features = ["v4", "serde"] }
 async-trait = "0.1"
 tokio = { version = "1", features = ["full"] }
 typetag = "0.2"
+urlencoding = "2.1"
