@@ -97,6 +97,30 @@ pub struct NewIngredient {
 }
 
 impl Ingredient {
+    /// Find ingredient by name (case-insensitive) in database only
+    /// Returns Option<i32> - ingredient ID if found, None if not found
+    pub fn find_in_db(
+        ingredient_name: &str,
+        conn: &mut PgConnection,
+    ) -> Result<Option<i32>, diesel::result::Error> {
+        use crate::schema::ingredients::dsl::*;
+        use diesel::dsl::sql;
+        use diesel::sql_types::Bool;
+
+        // Try to find with case-insensitive search
+        let found = ingredients
+            .filter(sql::<Bool>(&format!("LOWER(name) = LOWER('{}')", ingredient_name.replace("'", "''"))))
+            .select(id)
+            .first::<i32>(conn)
+            .optional()?;
+
+        if let Some(ingredient_id) = found {
+            log::info!("Found existing ingredient: {} (ID: {})", ingredient_name, ingredient_id);
+        }
+
+        Ok(found)
+    }
+
     /// Find ingredient by name (case-insensitive) or enqueue job to create it
     /// Returns Option<i32> - ingredient ID if found, None if enqueued for creation
     pub fn find_or_enqueue_for_creation(

@@ -322,14 +322,91 @@ fn process_non_food_ingredients(product: &ProductNonFood, pool: &web::Data<DbPoo
             }
         };
 
-        // Split by commas and process each ingredient
+        // Collect ingredient names
+        let ingredient_names: Vec<String> = ingredients
+            .split(',')
+            .map(|name| name.trim().trim_end_matches('.').trim_end_matches(';').to_string())
+            .filter(|name| {
+                !name.is_empty() &&
+                name.len() >= 2 &&
+                !name.eq_ignore_ascii_case("and") &&
+                !name.eq_ignore_ascii_case("or")
+            })
+            .collect();
+
+        if ingredient_names.is_empty() {
+            log::info!("No valid ingredients found after filtering");
+            return;
+        }
+
+        log::info!("Processing {} ingredients", ingredient_names.len());
+
+        // Spawn async task to enqueue all ingredients sequentially with single queue connection
+        tokio::spawn(async move {
+            use fang::asynk::async_queue::{AsyncQueue, AsyncQueueable};
+            use fang::NoTls;
+            use crate::jobs::CreateIngredientJob;
+
+            let database_url = match std::env::var("DATABASE_URL") {
+                Ok(url) => url,
+                Err(_) => {
+                    log::error!("DATABASE_URL not set");
+                    return;
+                }
+            };
+
+            let mut queue = AsyncQueue::builder()
+                .uri(database_url)
+                .max_pool_size(2_u32)
+                .build();
+
+            // Connect once and reuse the connection
+            let connect_result = tokio::time::timeout(
+                std::time::Duration::from_secs(10),
+                queue.connect(NoTls)
+            ).await;
+
+            match connect_result {
+                Ok(Ok(_)) => {
+                    log::info!("Connected to job queue for ingredient processing");
+
+                    // Process ingredients sequentially to avoid overwhelming the connection pool
+                    for ingredient_name in ingredient_names {
+                        let job = CreateIngredientJob {
+                            name: ingredient_name.clone(),
+                        };
+
+                        match queue.insert_task(&job).await {
+                            Ok(_) => {
+                                log::info!("Successfully enqueued CreateIngredientJob for '{}'", ingredient_name);
+                            }
+                            Err(e) => {
+                                log::error!("Failed to enqueue job for '{}': {:?}", ingredient_name, e);
+                            }
+                        }
+
+                        // Small delay between insertions to avoid rate limiting
+                        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+                    }
+
+                    log::info!("Finished enqueueing all ingredient jobs");
+                }
+                Ok(Err(e)) => {
+                    log::error!("Failed to connect to job queue: {:?}", e);
+                }
+                Err(_) => {
+                    log::error!("Timeout connecting to job queue");
+                }
+            }
+        });
+
+        // Mark ingredients as found or enqueued in the sync code
         for ingredient_name in ingredients.split(',') {
             let clean_name = ingredient_name
                 .trim()
                 .trim_end_matches('.')
                 .trim_end_matches(';');
 
-            // Skip common non-ingredient words
             if clean_name.is_empty() ||
                clean_name.len() < 2 ||
                clean_name.eq_ignore_ascii_case("and") ||
@@ -339,7 +416,7 @@ fn process_non_food_ingredients(product: &ProductNonFood, pool: &web::Data<DbPoo
 
             log::info!("Processing ingredient: {}", clean_name);
 
-            match Ingredient::find_or_enqueue_for_creation(clean_name, &mut conn) {
+            match Ingredient::find_in_db(clean_name, &mut conn) {
                 Ok(Some(id)) => {
                     log::info!("Ingredient '{}' found with ID: {}", clean_name, id);
                 }
@@ -347,7 +424,7 @@ fn process_non_food_ingredients(product: &ProductNonFood, pool: &web::Data<DbPoo
                     log::info!("Ingredient '{}' enqueued for creation", clean_name);
                 }
                 Err(e) => {
-                    log::error!("Error processing ingredient '{}': {}", clean_name, e);
+                    log::error!("Error checking ingredient '{}': {}", clean_name, e);
                 }
             }
         }
