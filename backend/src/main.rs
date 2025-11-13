@@ -13,7 +13,7 @@ use fang::NoTls;
 
 use crate::db::DbPool;
 use crate::jobs::{FetchProductJob, AnalyzeIngredientsJob};
-use crate::models::{NewProduct, OpenFoodFactsResponse, Product};
+use crate::models::{NewProduct, OpenFoodFactsResponse, Product, Ingredient};
 use crate::schema::products;
 
 #[derive(Serialize)]
@@ -190,6 +190,10 @@ async fn get_product(
     match inserted_product {
         Ok(Ok(product)) => {
             log::info!("Product {} stored in database", barcode);
+
+            // Process ingredients - extract and enqueue for creation if needed
+            process_product_ingredients(&product_data, &pool);
+
             HttpResponse::Ok().json(product)
         }
         Ok(Err(e)) => {
@@ -200,6 +204,97 @@ async fn get_product(
         Err(e) => {
             log::error!("Blocking error on insert: {}", e);
             HttpResponse::Ok().json(product_data)
+        }
+    }
+}
+
+/// Process ingredients from product data and enqueue for creation if needed
+fn process_product_ingredients(product_data: &serde_json::Value, pool: &web::Data<DbPool>) {
+    // Try to get ingredients array from OpenFoodFacts data
+    let ingredients_array = product_data
+        .get("ingredients")
+        .and_then(|v| v.as_array());
+
+    if let Some(ingredients) = ingredients_array {
+        log::info!("Processing {} ingredients from product", ingredients.len());
+
+        // Get a database connection
+        let mut conn = match pool.get() {
+            Ok(conn) => conn,
+            Err(e) => {
+                log::error!("Failed to get DB connection for ingredient processing: {}", e);
+                return;
+            }
+        };
+
+        // Process each ingredient
+        for ingredient in ingredients {
+            // Extract ingredient name (can be "text", "id", or other fields)
+            let ingredient_name = ingredient
+                .get("text")
+                .or_else(|| ingredient.get("id"))
+                .and_then(|v| v.as_str());
+
+            if let Some(name) = ingredient_name {
+                // Clean up the ingredient name
+                let clean_name = name.trim();
+
+                if !clean_name.is_empty() {
+                    log::info!("Processing ingredient: {}", clean_name);
+
+                    // Find or enqueue for creation
+                    match Ingredient::find_or_enqueue_for_creation(clean_name, &mut conn) {
+                        Ok(Some(id)) => {
+                            log::info!("Ingredient '{}' found with ID: {}", clean_name, id);
+                        }
+                        Ok(None) => {
+                            log::info!("Ingredient '{}' enqueued for creation", clean_name);
+                        }
+                        Err(e) => {
+                            log::error!("Error processing ingredient '{}': {}", clean_name, e);
+                        }
+                    }
+                }
+            }
+        }
+    } else {
+        // Fallback: try to parse ingredients_text (comma-separated string)
+        if let Some(ingredients_text) = product_data
+            .get("ingredients_text")
+            .and_then(|v| v.as_str())
+        {
+            log::info!("Processing ingredients from text: {}", ingredients_text);
+
+            let mut conn = match pool.get() {
+                Ok(conn) => conn,
+                Err(e) => {
+                    log::error!("Failed to get DB connection for ingredient processing: {}", e);
+                    return;
+                }
+            };
+
+            // Split by commas and process each ingredient
+            for ingredient_name in ingredients_text.split(',') {
+                let clean_name = ingredient_name.trim();
+
+                if !clean_name.is_empty() {
+                    log::info!("Processing ingredient: {}", clean_name);
+
+                    match Ingredient::find_or_enqueue_for_creation(clean_name, &mut conn) {
+                        Ok(Some(id)) => {
+                            log::info!("Ingredient '{}' found with ID: {}", clean_name, id);
+                        }
+                        Ok(None) => {
+                            log::info!("Ingredient '{}' enqueued for creation", clean_name);
+                        }
+                        Err(e) => {
+                            log::error!("Error processing ingredient '{}': {}", clean_name, e);
+                        }
+                    }
+                }
+            }
+        } else {
+            log::info!("No ingredients data found in product");
         }
     }
 }
