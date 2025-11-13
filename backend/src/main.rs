@@ -819,3 +819,87 @@ async fn main() -> std::io::Result<()> {
     .run()
     .await
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_extract_ingredients_with_ingredients_marker() {
+        let text = "Premium supplement. Ingredients: Vitamin C, Zinc, Magnesium. Take daily.";
+        let result = extract_ingredients_from_text(text);
+
+        assert!(result.is_some());
+        let ingredients = result.unwrap();
+        assert!(ingredients.contains("Vitamin C"));
+        assert!(ingredients.contains("Zinc"));
+        assert!(ingredients.contains("Magnesium"));
+        assert!(!ingredients.contains("Take daily")); // Should stop at period before capital
+    }
+
+    #[test]
+    fn test_extract_ingredients_with_contains_marker() {
+        let text = "Natural formula. Contains: Water, Glycerin, Hyaluronic Acid.";
+        let result = extract_ingredients_from_text(text);
+
+        assert!(result.is_some());
+        let ingredients = result.unwrap();
+        assert!(ingredients.contains("Water"));
+        assert!(ingredients.contains("Glycerin"));
+        assert!(ingredients.contains("Hyaluronic Acid"));
+    }
+
+    #[test]
+    fn test_extract_ingredients_with_active_ingredients() {
+        let text = "Active Ingredients: Retinol, Niacinamide, Peptides. For external use only.";
+        let result = extract_ingredients_from_text(text);
+
+        assert!(result.is_some());
+        let ingredients = result.unwrap();
+        assert!(ingredients.contains("Retinol"));
+        assert!(ingredients.contains("Niacinamide"));
+    }
+
+    #[test]
+    fn test_extract_ingredients_no_marker() {
+        let text = "This is a product with no ingredient list in it.";
+        let result = extract_ingredients_from_text(text);
+
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_extract_ingredients_multiple_sentences() {
+        let text = "Product description. Ingredients: Salt, Pepper, Garlic. Directions: Use as needed. Storage: Keep cool.";
+        let result = extract_ingredients_from_text(text);
+
+        assert!(result.is_some());
+        let ingredients = result.unwrap();
+        assert!(ingredients.contains("Salt"));
+        assert!(ingredients.contains("Garlic"));
+        // Should stop before "Directions" (capital letter after period)
+        assert!(!ingredients.contains("Directions"));
+    }
+
+    #[test]
+    fn test_extract_ingredients_case_insensitive() {
+        let text = "INGREDIENTS: WATER, SUGAR, SALT";
+        let result = extract_ingredients_from_text(text);
+
+        assert!(result.is_some());
+        let ingredients = result.unwrap();
+        assert!(ingredients.contains("WATER"));
+        assert!(ingredients.contains("SUGAR"));
+    }
+
+    #[test]
+    fn test_extract_ingredients_with_other_ingredients_marker() {
+        let text = "Supplement facts. Other Ingredients: Cellulose, Silica. Made in USA.";
+        let result = extract_ingredients_from_text(text);
+
+        assert!(result.is_some());
+        let ingredients = result.unwrap();
+        assert!(ingredients.contains("Cellulose"));
+        assert!(ingredients.contains("Silica"));
+    }
+}

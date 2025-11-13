@@ -272,3 +272,94 @@ pub struct NewProductNonFood {
     pub full_response: Option<serde_json::Value>,
     pub data_source: Option<String>,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_new_product_creation() {
+        let product = NewProduct {
+            barcode: "123456789".to_string(),
+            product_name: Some("Test Product".to_string()),
+            brands: Some("Test Brand".to_string()),
+            categories: None,
+            quantity: None,
+            image_url: None,
+            nutriscore_grade: None,
+            nova_group: None,
+            ecoscore_grade: None,
+            ingredients_text: Some("water, salt".to_string()),
+            allergens: None,
+            full_response: serde_json::json!({}),
+        };
+
+        assert_eq!(product.barcode, "123456789");
+        assert_eq!(product.product_name, Some("Test Product".to_string()));
+        assert_eq!(product.brands, Some("Test Brand".to_string()));
+    }
+
+    #[test]
+    fn test_new_ingredient_creation() {
+        let ingredient = NewIngredient {
+            name: "Salt".to_string(),
+            branded: false,
+            gram_protein_per_gram: None,
+            gram_carbs_per_gram: None,
+            gram_fat_per_gram: None,
+            gram_fiber_per_gram: None,
+        };
+
+        assert_eq!(ingredient.name, "Salt");
+        assert_eq!(ingredient.branded, false);
+    }
+
+    #[test]
+    fn test_new_ingredient_with_nutrition() {
+        let ingredient = NewIngredient {
+            name: "Chicken Breast".to_string(),
+            branded: false,
+            gram_protein_per_gram: Some(0.31),
+            gram_carbs_per_gram: Some(0.0),
+            gram_fat_per_gram: Some(0.037),
+            gram_fiber_per_gram: Some(0.0),
+        };
+
+        assert_eq!(ingredient.name, "Chicken Breast");
+        assert_eq!(ingredient.gram_protein_per_gram, Some(0.31));
+        assert_eq!(ingredient.gram_carbs_per_gram, Some(0.0));
+    }
+
+    #[test]
+    fn test_new_product_non_food_creation() {
+        let product = NewProductNonFood {
+            barcode: Some("999888777".to_string()),
+            name: "Test Supplement".to_string(),
+            brand: Some("Health Co".to_string()),
+            category: Some("Supplements".to_string()),
+            description: Some("Ingredients: Vitamin C, Zinc".to_string()),
+            full_response: None,
+            data_source: Some("Manual".to_string()),
+        };
+
+        assert_eq!(product.name, "Test Supplement");
+        assert_eq!(product.category, Some("Supplements".to_string()));
+        assert!(product.description.unwrap().contains("Vitamin C"));
+    }
+
+    #[test]
+    fn test_openfoodfacts_response_parsing() {
+        let json_data = r#"{
+            "status": 1,
+            "code": "3017620422003",
+            "product": {
+                "product_name": "Nutella"
+            }
+        }"#;
+
+        let response: OpenFoodFactsResponse = serde_json::from_str(json_data).unwrap();
+        assert_eq!(response.status, 1);
+        assert_eq!(response.code, Some("3017620422003".to_string()));
+        assert!(response.product.is_some());
+    }
+}
