@@ -127,9 +127,9 @@ impl Ingredient {
         use fang::NoTls;
         use crate::jobs::CreateIngredientJob;
 
-        // Create async runtime for job enqueueing
-        let runtime = tokio::runtime::Runtime::new().unwrap();
-        runtime.block_on(async {
+        // Spawn async task to enqueue job (don't block the current thread)
+        let ingredient_name_clone = ingredient_name.to_string();
+        tokio::spawn(async move {
             let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
 
             let mut queue = AsyncQueue::builder()
@@ -140,12 +140,12 @@ impl Ingredient {
             match queue.connect(NoTls).await {
                 Ok(_) => {
                     let job = CreateIngredientJob {
-                        name: ingredient_name.to_string(),
+                        name: ingredient_name_clone.clone(),
                     };
 
                     match queue.insert_task(&job).await {
                         Ok(_) => {
-                            log::info!("Successfully enqueued CreateIngredientJob for '{}'", ingredient_name);
+                            log::info!("Successfully enqueued CreateIngredientJob for '{}'", ingredient_name_clone);
                         }
                         Err(e) => {
                             log::error!("Failed to enqueue job: {:?}", e);
